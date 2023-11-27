@@ -10,52 +10,59 @@ python3 flask_blackjack.py
 Please also note this is a very basic version. For a full version, you'd likely want to add a database to keep track of player's wins/losses, use templates to render the output in HTML, include betting, and so on.
 """
 
-from flask import Flask, request
-import random
+# filename: flask_blackjack.py
+from flask import Flask, request, render_template_string, session
+from random import sample
 
 app = Flask(__name__)
-
-# Global vars
-player_cards = []
-dealer_cards = []
-
-def calculate_score(cards):
-    if sum(cards) == 21 and len(cards) == 2:
-        return 0
-    if 11 in cards and sum(cards) > 21:
-        cards.remove(11)
-        cards.append(1)
-    return sum(cards)
-
-def deal_card():
-    return random.choice([11, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10])
+app.secret_key = 'your_super_secret_string_here'
 
 @app.route('/')
-def game_start():
-    global player_cards, dealer_cards
-    player_cards = []
-    dealer_cards = []
-    for _ in range(2):
-        player_cards.append(deal_card())
-        dealer_cards.append(deal_card())
-    return f"Welcome to Blackjack! Your cards: {player_cards}, dealer's first card: {dealer_cards[0]}"
+def blackjack():
+    return render_template_string("""
+        <p>Welcome! Let's play a game of BlackJack.</p>
+        <form action="/deal" method="post">
+        <input type="submit" value="Deal the cards!">
+        </form>
+        """)
 
-@app.route('/game', methods=['GET', 'POST'])
-def game_play():
-    global player_cards, dealer_cards
-    if calculate_score(player_cards) == 0 or calculate_score(dealer_cards) == 0:
-        return f"Game over: {'Player win' if calculate_score(player_cards) == 0 else 'Dealer win'}"
-    if request.method == 'POST':
-        player_cards.append(deal_card())
-        if calculate_score(player_cards) > 21:
-            return f"Your cards: {player_cards}, Your score: {calculate_score(player_cards)}, You lose!"
-        return f"Your cards: {player_cards}, Your score: {calculate_score(player_cards)}"
-    else:
-        while calculate_score(dealer_cards) != 0 and calculate_score(dealer_cards) < 17:
-            dealer_cards.append(deal_card())
-        return f"Your cards: {player_cards}, Your score: {calculate_score(player_cards)}, Dealer's cards: {dealer_cards}, Dealer's score: {calculate_score(dealer_cards)}, {'Player win' if calculate_score(player_cards) > calculate_score(dealer_cards) else 'Dealer win'}"
+@app.route('/deal', methods=['POST'])
+def deal():
+    deck = [i for i in range(1, 14)] * 4
+    session['player'] = sample(deck, 2)
+    deck = list(set(deck) - set(session['player'])) # remove player's cards from deck
+    session['dealer'] = sample(deck, 2)
+    session['deck'] = list(set(deck) - set(session['dealer'])) # remove dealer's cards from deck
+    return render_template_string("""
+        <p>Your hand: {{player}} | Dealer shows: {{dealer[0]}} </p>
+        <form action="/hit" method="post">
+        <input type="submit" value="Hit me!">
+        </form>
+        <form action="/stand" method="post">
+        <input type="submit" value="I'll stand">
+        </form>
+        """, player=session['player'], dealer=session['dealer'])
+
+@app.route('/hit', methods=['POST'])
+def hit():
+    session['player'].append(sample(session['deck'], 1)[0])
+    session['deck'] = list(set(session['deck']) - set([session['player'][-1]])) #remove added card from deck
+    return render_template_string("""
+        <p>Your hand: {{player}} | Dealer shows: {{dealer[0]}} </p>
+        <form action="/hit" method="post">
+        <input type="submit" value="Hit me!">
+        </form>
+        <form action="/stand" method="post">
+        <input type="submit" value="I'll stand">
+        </form>
+        """, player=session['player'], dealer=session['dealer'])
+
+@app.route('/stand', methods=['POST'])
+def stand():
+    while(sum(session['dealer']) <= 16):
+        session['dealer'].append(sample(session['deck'], 1)[0])
+        session['deck'] = list(set(session['deck']) - set([session['dealer'][-1]])) #remove added card from deck
+    return f'Dealer\'s hand: {session["dealer"]}, Your hand: {session["player"]}'
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-
+    app.run(port=5000, debug=False)
